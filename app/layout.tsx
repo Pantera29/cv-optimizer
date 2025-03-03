@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Optimizador de CV con IA",
-  description: "Optimiza tu CV para destacar en el mercado laboral",
+  description: "Ajustá tu CV para destacar en el mercado laboral",
 };
 
 export default function RootLayout({
