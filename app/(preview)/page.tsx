@@ -9,7 +9,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { FileText } from "lucide-react";
 import UploadCV from "@/components/UploadCV";
 import JobDetailsForm from "@/components/JobDetailsForm";
@@ -128,7 +127,7 @@ export default function Home() {
                   Análisis y sugerencias personalizadas para tu CV
                 </CardDescription>
               </CardHeader>
-              <Separator className="mb-6" />
+              <div className="h-px bg-border mb-6" />
               <CardContent>
                 <RecommendationsPanel 
                   recommendations={recommendations}
