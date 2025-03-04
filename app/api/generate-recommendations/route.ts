@@ -21,44 +21,83 @@ export async function POST(request: Request) {
         {
           role: "system",
           content:
-            "Eres un experto en recursos humanos y optimización de CVs. Analiza CVs y proporciona recomendaciones específicas y accionables en formato JSON. Asegúrate de que la respuesta sea un objeto JSON válido con las categorías especificadas.",
+            "Eres un consultor senior de selección ejecutiva con más de 15 años de experiencia en reclutamiento corporativo y optimización de currículums para empresas Fortune 500. Tu especialidad es identificar el ajuste entre candidatos y posiciones, con profundo conocimiento en sistemas ATS (Applicant Tracking Systems) y algoritmos de filtrado utilizados por empresas líderes. Debes analizar CVs con precisión profesional utilizando criterios de evaluación de la industria, proporcionando recomendaciones altamente específicas y accionables en formato JSON válido.",
         },
         {
           role: "user",
-          content: `Por favor, analiza el siguiente CV y proporciona recomendaciones detalladas en formato JSON para optimizarlo según los requisitos del trabajo:
+          content: `Realiza un análisis exhaustivo del siguiente CV en relación a la descripción del trabajo proporcionada. Evalúa la alineación estratégica entre ambos y proporciona recomendaciones detalladas que aumenten significativamente las probabilidades de superar los filtros ATS y captar la atención de los reclutadores:
 
 CV:
 ${cvText}
 
 Detalles del Trabajo:
-- URL de LinkedIn: ${jobDetails.linkedinUrl}
-- Habilidades Requeridas: ${jobDetails.requiredSkills}
-- Nivel de Experiencia: ${jobDetails.experienceLevel}
-- Responsabilidades: ${jobDetails.responsibilities}
+- Título: ${jobDetails.title || "No especificado"}
+- Empresa: ${jobDetails.company || "No especificada"}
+- URL de LinkedIn: ${jobDetails.linkedinUrl || "No especificada"}
+- Habilidades Requeridas: ${jobDetails.requiredSkills || "No especificadas"}
+- Nivel de Experiencia: ${jobDetails.experienceLevel || "No especificado"}
+- Responsabilidades: ${jobDetails.responsibilities || "No especificadas"}
+- Sector/Industria: ${jobDetails.industry || "No especificado"}
 
-Proporciona recomendaciones específicas en las siguientes categorías y devuelve la respuesta en este formato JSON exacto:
+Proporciona un análisis detallado en las siguientes categorías utilizando exclusivamente este formato JSON:
 {
-  "skills": [
-    {"type": "positive", "content": "punto positivo sobre habilidades"},
-    {"type": "improvement", "content": "sugerencia de mejora sobre habilidades"}
+  "puntuacionGeneral": {
+    "score": 85, // Puntuación de 0 a 100 que refleja la compatibilidad general
+    "explicacion": "Explicación breve de la puntuación"
+  },
+  "compatibilidadATS": {
+    "score": 80, // Puntuación de 0 a 100 para compatibilidad con sistemas ATS
+    "explicacion": "Razones por las que el CV puede ser filtrado o aprobado por ATS"
+  },
+  "habilidadesTecnicas": [
+    {"tipo": "coincidencia", "contenido": "Habilidad técnica presente que coincide exactamente con requisitos"},
+    {"tipo": "parcial", "contenido": "Habilidad relacionada pero no idéntica a lo solicitado"},
+    {"tipo": "ausente", "contenido": "Habilidad clave requerida que falta en el CV"},
+    {"tipo": "mejora", "contenido": "Sugerencia específica para reformular una habilidad existente"},
+    {"tipo": "adicional", "contenido": "Habilidad no mencionada pero relevante para agregar"}
   ],
-  "experience": [
-    {"type": "positive", "content": "punto positivo sobre experiencia"},
-    {"type": "improvement", "content": "sugerencia de mejora sobre experiencia"}
+  "habilidadesBlandas": [
+    {"tipo": "coincidencia", "contenido": "Habilidad blanda presente que coincide con requisitos"},
+    {"tipo": "ausente", "contenido": "Habilidad blanda clave que falta en el CV"},
+    {"tipo": "mejora", "contenido": "Sugerencia para mostrar mejor una habilidad blanda"}
   ],
-  "structure": [
-    {"type": "positive", "content": "punto positivo sobre estructura"},
-    {"type": "improvement", "content": "sugerencia de mejora sobre estructura"}
+  "experienciaProfesional": [
+    {"tipo": "fortaleza", "contenido": "Aspecto sobresaliente de la experiencia"},
+    {"tipo": "debilidad", "contenido": "Brecha o inconsistencia en la experiencia"},
+    {"tipo": "mejora", "contenido": "Recomendación específica para reformular una experiencia"},
+    {"tipo": "cuantificacion", "contenido": "Sugerencia para añadir métricas o resultados cuantificables"}
   ],
-  "keywords": [
-    {"type": "positive", "content": "punto positivo sobre palabras clave"},
-    {"type": "improvement", "content": "sugerencia de mejora sobre palabras clave"}
-  ]
+  "estructuraYFormateo": [
+    {"tipo": "fortaleza", "contenido": "Elemento estructural bien implementado"},
+    {"tipo": "debilidad", "contenido": "Problema de estructura o formato"},
+    {"tipo": "mejora", "contenido": "Recomendación específica para mejorar la estructura"}
+  ],
+  "optimizacionDePalabrasClave": [
+    {"tipo": "presentes", "palabrasClave": ["palabra1", "palabra2"], "contenido": "Palabras clave relevantes presentes"},
+    {"tipo": "faltantes", "palabrasClave": ["palabra1", "palabra2"], "contenido": "Palabras clave críticas ausentes"},
+    {"tipo": "mejora", "contenido": "Sugerencia para mejorar densidad o posicionamiento de palabras clave"}
+  ],
+  "seccionesRecomendadas": [
+    {"tipo": "adicionar", "seccion": "Nombre de sección faltante", "contenido": "Justificación y contenido sugerido"},
+    {"tipo": "mejorar", "seccion": "Nombre de sección existente", "contenido": "Forma específica de mejorarla"}
+  ],
+  "modificacionesPrioritarias": [
+    {"prioridad": 1, "categoria": "Categoría afectada", "accion": "Acción específica y detallada a realizar"},
+    {"prioridad": 2, "categoria": "Categoría afectada", "accion": "Acción específica y detallada a realizar"},
+    {"prioridad": 3, "categoria": "Categoría afectada", "accion": "Acción específica y detallada a realizar"}
+  ],
+  "resumenEjecutivo": {
+    "fortalezasPrincipales": ["Fortaleza 1", "Fortaleza 2", "Fortaleza 3"],
+    "brechasCriticas": ["Brecha 1", "Brecha 2"],
+    "potencialDeAjuste": "Alto/Medio/Bajo con justificación breve"
+  }
 }`
         }
       ],
       model: "gpt-4-turbo-preview",
       response_format: { type: "json_object" },
+      temperature: 0.2,
+      max_tokens: 2500,
     });
 
     if (!completion.choices[0].message.content) {
