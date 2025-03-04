@@ -1,0 +1,22 @@
+{
+  "functions": {
+    "api/generate-recommendations/*.ts": {
+      "maxDuration": 60
+    },
+    "api/extract-text/*.ts": {
+      "maxDuration": 30
+    }
+  },
+  "regions": ["sfo1"],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    }
+  ]
+} 
