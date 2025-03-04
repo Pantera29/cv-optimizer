@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Briefcase, Send } from "lucide-react";
+import { Briefcase, Send, Loader2 } from "lucide-react";
 
 export interface JobDetails {
   title: string;
@@ -144,8 +144,17 @@ export default function JobDetailsForm({ onSubmit, isLoading }: {
       </div>
 
       <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
-        <Send className="mr-2 h-4 w-4" />
-        {isLoading ? "Analizando..." : "Analizar CV"}
+        {isLoading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Analizando...
+          </>
+        ) : (
+          <>
+            <Send className="mr-2 h-4 w-4" />
+            Analizar CV
+          </>
+        )}
       </Button>
     </form>
   );

@@ -16,6 +16,7 @@ import RecommendationsPanel from "@/components/RecommendationsPanel";
 import type { JobDetails } from "@/components/JobDetailsForm";
 import type { RecommendationsState } from "@/components/RecommendationsPanel";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export default function Home() {
   const [cvText, setCvText] = useState<string>("");
@@ -92,7 +93,7 @@ export default function Home() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-7xl mx-auto">
           {/* Panel Izquierdo */}
-          <div className="space-y-6">
+          <div className={cn("space-y-6", isAnalyzing && "opacity-70 pointer-events-none transition-opacity duration-300")}>
             <Card className="border-none shadow-lg">
               <CardHeader>
                 <CardTitle>Sube tu CV</CardTitle>

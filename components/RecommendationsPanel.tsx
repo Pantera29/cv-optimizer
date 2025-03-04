@@ -628,10 +628,22 @@ export default function RecommendationsPanel({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex flex-col items-center gap-4">
-          <CircleDashed className="h-10 w-10 animate-spin text-muted-foreground" />
-          <p className="text-muted-foreground">Analizando tu CV...</p>
+      <div className="flex flex-col items-center justify-center space-y-4 py-16">
+        <div className="relative h-16 w-16">
+          <Loader2 className="h-16 w-16 animate-spin text-primary" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <FileText className="h-6 w-6 text-primary-foreground" />
+          </div>
+        </div>
+        <h3 className="text-xl font-semibold">Analizando tu CV...</h3>
+        <p className="text-center text-muted-foreground max-w-md">
+          Estamos evaluando tu currículum y generando recomendaciones personalizadas para mejorar tus posibilidades de éxito.
+        </p>
+        <div className="flex flex-col items-center mt-4 space-y-2 w-64">
+          <div className="h-1.5 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: '100%' }}></div>
+          </div>
+          <p className="text-sm text-muted-foreground">Esto puede tardar unos momentos</p>
         </div>
       </div>
     );
@@ -650,7 +662,7 @@ export default function RecommendationsPanel({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in-50 duration-500">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Recomendaciones</h2>
         <Button variant="outline" size="sm" onClick={onReset} className="gap-2">
