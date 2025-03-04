@@ -1,9 +1,9 @@
 {
   "functions": {
-    "api/generate-recommendations/*.ts": {
+    "app/api/generate-recommendations/route.ts": {
       "maxDuration": 60
     },
-    "api/extract-text/*.ts": {
+    "app/api/extract-text/route.ts": {
       "maxDuration": 30
     }
   },
