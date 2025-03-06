@@ -1,24 +1,23 @@
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
-import { Toaster } from "sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Optimizador de CV con IA",
-  description: "Mejora tu currículum para destacar en el mercado laboral utilizando inteligencia artificial",
+  title: "CV Optimizer - Mejora tu CV con IA",
+  description: "Optimiza tu currículum vitae con inteligencia artificial y destaca en el mercado laboral",
   metadataBase: new URL("https://cv-optimizer-blue.vercel.app"),
   openGraph: {
-    title: "Optimizador de CV con IA",
-    description: "Mejora tu currículum para destacar en el mercado laboral utilizando inteligencia artificial",
+    title: "CV Optimizer - Mejora tu CV con IA",
+    description: "Optimiza tu currículum vitae con inteligencia artificial y destaca en el mercado laboral",
     url: "https://cv-optimizer-blue.vercel.app",
-    siteName: "Optimizador de CV",
+    siteName: "CV Optimizer",
     locale: "es_ES",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Optimizador de CV con IA",
-    description: "Mejora tu currículum para destacar en el mercado laboral utilizando inteligencia artificial",
+    title: "CV Optimizer - Mejora tu CV con IA",
+    description: "Optimiza tu currículum vitae con inteligencia artificial y destaca en el mercado laboral",
   },
 }
 
@@ -31,7 +30,6 @@ export default function RootLayout({
     <html lang="es" className={GeistSans.className}>
       <body>
         {children}
-        <Toaster richColors position="top-right" />
       </body>
     </html>
   );
