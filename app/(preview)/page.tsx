@@ -1,5 +1,6 @@
 "use client";
 
+import '../globals.css';
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,8 +18,9 @@ import type { JobDetails } from "@/components/JobDetailsForm";
 import type { RecommendationsState } from "@/components/RecommendationsPanel";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 
-export default function Home() {
+export default function PreviewPage() {
   const [cvText, setCvText] = useState<string>("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [recommendations, setRecommendations] = useState<RecommendationsState>({
