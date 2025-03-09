@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import "./globals.css";
+import { Toaster } from "@/components/ui/toaster";
+import { AuthProvider } from "@/lib/hooks/useAuth";
 
 export const metadata: Metadata = {
   title: "CV Optimizer - Mejora tu CV con IA",
@@ -29,7 +31,10 @@ export default function RootLayout({
   return (
     <html lang="es" className={GeistSans.className}>
       <body className="min-h-screen bg-background">
-        {children}
+        <AuthProvider>
+          {children}
+          <Toaster />
+        </AuthProvider>
       </body>
     </html>
   );

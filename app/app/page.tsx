@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { FileText, ArrowLeft } from "lucide-react";
+import { FileText, Loader2 } from "lucide-react";
 import UploadCV from "@/components/UploadCV";
 import JobDetailsForm from "@/components/JobDetailsForm";
 import RecommendationsPanel from "@/components/RecommendationsPanel";
@@ -17,9 +17,13 @@ import type { JobDetails } from "@/components/JobDetailsForm";
 import type { RecommendationsState } from "@/components/RecommendationsPanel";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
+import { LogoutButton } from "@/components/auth/LogoutButton";
+import { useAuth } from "@/lib/hooks/useAuth";
+import { useRouter } from "next/navigation";
 
-export default function Home() {
+export default function AppPage() {
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
   const [cvText, setCvText] = useState<string>("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [recommendations, setRecommendations] = useState<RecommendationsState>({
@@ -28,6 +32,33 @@ export default function Home() {
     structure: [],
     keywords: [],
   });
+
+  // Si no hay usuario autenticado después de cargar, redirigir a login
+  useEffect(() => {
+    if (!isLoading && !user) {
+      console.log("No hay usuario autenticado, redirigiendo a login...");
+      window.location.href = "/login";
+    } else if (user) {
+      console.log("Usuario autenticado:", user.email);
+    }
+  }, [isLoading, user]);
+
+  // Mientras carga, mostrar spinner
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="mt-4 text-lg">Cargando aplicación...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Si no hay usuario, no renderizar el contenido de la aplicación
+  if (!user) {
+    return null;
+  }
 
   const handleTextExtracted = (text: string) => {
     setCvText(text);
@@ -77,35 +108,28 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800">
-      {/* Back Button */}
-      <div className="absolute top-4 left-4">
-        <Link href="/">
-          <Button variant="ghost" size="sm" className="gap-2">
-            <ArrowLeft className="h-4 w-4" />
-            Volver
-          </Button>
-        </Link>
-      </div>
-
-      <main className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="text-center space-y-4 mb-12">
-          <div className="inline-flex items-center justify-center p-2 bg-primary/10 rounded-full mb-4">
+    <div className="min-h-screen">
+      <header className="border-b">
+        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-2">
             <FileText className="h-6 w-6 text-primary" />
+            <h1 className="text-2xl font-bold">CV Optimizer</h1>
           </div>
-          <h1 className="text-4xl font-bold tracking-tight text-gray-900 dark:text-gray-50">
-            Optimizador de CV con IA
-          </h1>
-          <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
-            Mejora tu currículum para destacar en el mercado laboral utilizando inteligencia artificial
-          </p>
+          <div className="flex items-center gap-4">
+            {user && (
+              <div className="text-sm text-muted-foreground mr-4">
+                {user.email}
+              </div>
+            )}
+            <LogoutButton />
+          </div>
         </div>
-
+      </header>
+      <main className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-7xl mx-auto">
           {/* Panel Izquierdo */}
           <div className={cn("space-y-6", isAnalyzing && "opacity-70 pointer-events-none transition-opacity duration-300")}>
-            <Card className="border-none shadow-lg">
+            <Card>
               <CardHeader>
                 <CardTitle>Sube tu CV</CardTitle>
                 <CardDescription>
@@ -117,7 +141,7 @@ export default function Home() {
               </CardContent>
             </Card>
 
-            <Card className="border-none shadow-lg">
+            <Card>
               <CardHeader>
                 <CardTitle>Detalles del Trabajo</CardTitle>
                 <CardDescription>
@@ -132,14 +156,13 @@ export default function Home() {
 
           {/* Panel Derecho */}
           <div className="lg:pl-6">
-            <Card className="border-none shadow-lg h-full">
+            <Card className="h-full">
               <CardHeader>
                 <CardTitle>Recomendaciones</CardTitle>
                 <CardDescription>
                   Análisis y sugerencias personalizadas para tu CV
                 </CardDescription>
               </CardHeader>
-              <div className="h-px bg-border mb-6" />
               <CardContent>
                 <RecommendationsPanel 
                   recommendations={recommendations}
@@ -151,11 +174,6 @@ export default function Home() {
           </div>
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-        <p>Desarrollado con Next.js, Tailwind CSS y OpenAI</p>
-      </footer>
     </div>
   );
 } 
