@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { supabase } from "@/lib/supabase";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -16,6 +17,89 @@ export async function POST(request: Request) {
       );
     }
 
+    // Obtener datos detallados de LinkedIn si hay una URL
+    let linkedinData = null;
+    if (jobDetails.linkedinUrl && jobDetails.linkedinUrl.includes("linkedin.com")) {
+      try {
+        console.log("Obteniendo datos detallados de LinkedIn para:", jobDetails.linkedinUrl);
+        
+        // Extraer el ID del trabajo de la URL de LinkedIn (esto podría variar según el formato de URL)
+        const jobIdMatch = jobDetails.linkedinUrl.match(/\/jobs\/view\/(\d+)/);
+        const jobId = jobIdMatch ? jobIdMatch[1] : null;
+        
+        if (jobId) {
+          // Buscar datos en Supabase
+          const { data, error } = await supabase
+            .from("linkedin_jobs")
+            .select("*")
+            .eq("job_posting_id", jobId)
+            .single();
+            
+          if (error) {
+            console.error("Error al obtener datos de LinkedIn:", error);
+          } else if (data) {
+            console.log("Datos de LinkedIn obtenidos correctamente:", data.job_title);
+            linkedinData = data;
+          }
+        }
+      } catch (error) {
+        console.error("Error al procesar datos de LinkedIn:", error);
+      }
+    }
+
+    // Preparar información detallada del trabajo para el prompt
+    let jobDetailsPrompt = `
+Detalles del Trabajo:
+- Título: ${jobDetails.title || linkedinData?.job_title || "No especificado"}
+- Empresa: ${jobDetails.company || linkedinData?.company_name || "No especificada"}
+- URL de LinkedIn: ${jobDetails.linkedinUrl || "No especificada"}
+- Habilidades Requeridas: ${jobDetails.requiredSkills || "No especificadas"}
+- Nivel de Experiencia: ${jobDetails.experienceLevel || linkedinData?.job_seniority_level || "No especificado"}
+- Responsabilidades: ${jobDetails.responsibilities || "No especificadas"}
+- Sector/Industria: ${jobDetails.industry || (linkedinData?.job_industries ? linkedinData.job_industries.join(", ") : linkedinData?.company_industry) || "No especificado"}`;
+
+    // Agregar datos enriquecidos de LinkedIn si están disponibles
+    if (linkedinData) {
+      jobDetailsPrompt += `
+
+Datos adicionales de LinkedIn:
+- Ubicación: ${linkedinData.job_location || "No especificada"}
+- Tipo de Trabajo: ${linkedinData.job_work_type || linkedinData.job_employment_type || "No especificado"}
+- Rango Salarial: ${linkedinData.job_base_pay_range || (linkedinData.base_salary ? JSON.stringify(linkedinData.base_salary) : "No especificado")}
+- Nivel de Antigüedad: ${linkedinData.job_seniority_level || "No especificado"}
+- Función del Trabajo: ${linkedinData.job_function || "No especificada"}
+- Número de Aplicantes: ${linkedinData.applicant_count || "No especificado"}`;
+
+      // Agregar descripción del trabajo si está disponible
+      if (linkedinData.job_description_formatted) {
+        jobDetailsPrompt += `
+
+Descripción Completa del Trabajo:
+${linkedinData.job_description_formatted}`;
+      } else if (linkedinData.job_summary) {
+        jobDetailsPrompt += `
+
+Resumen del Trabajo:
+${linkedinData.job_summary}`;
+      }
+
+      // Agregar requisitos si están disponibles
+      if (linkedinData.job_requirements && typeof linkedinData.job_requirements === 'object') {
+        jobDetailsPrompt += `
+
+Requisitos del Trabajo:
+${JSON.stringify(linkedinData.job_requirements, null, 2)}`;
+      }
+
+      // Agregar cualificaciones si están disponibles
+      if (linkedinData.job_qualifications && typeof linkedinData.job_qualifications === 'object') {
+        jobDetailsPrompt += `
+
+Cualificaciones del Trabajo:
+${JSON.stringify(linkedinData.job_qualifications, null, 2)}`;
+      }
+    }
+
     const completion = await openai.chat.completions.create({
       messages: [
         {
@@ -30,14 +114,7 @@ export async function POST(request: Request) {
 CV:
 ${cvText}
 
-Detalles del Trabajo:
-- Título: ${jobDetails.title || "No especificado"}
-- Empresa: ${jobDetails.company || "No especificada"}
-- URL de LinkedIn: ${jobDetails.linkedinUrl || "No especificada"}
-- Habilidades Requeridas: ${jobDetails.requiredSkills || "No especificadas"}
-- Nivel de Experiencia: ${jobDetails.experienceLevel || "No especificado"}
-- Responsabilidades: ${jobDetails.responsibilities || "No especificadas"}
-- Sector/Industria: ${jobDetails.industry || "No especificado"}
+${jobDetailsPrompt}
 
 Proporciona un análisis detallado en las siguientes categorías utilizando exclusivamente este formato JSON:
 {
@@ -106,7 +183,16 @@ Proporciona un análisis detallado en las siguientes categorías utilizando excl
 
     const recommendations = JSON.parse(completion.choices[0].message.content);
 
-    return NextResponse.json(recommendations);
+    // Agregar información sobre los datos de LinkedIn utilizados
+    const responseData = {
+      ...recommendations,
+      metadata: {
+        usedLinkedinData: !!linkedinData,
+        jobUrl: jobDetails.linkedinUrl || null
+      }
+    };
+
+    return NextResponse.json(responseData);
   } catch (error: any) {
     console.error("Error al generar recomendaciones:", error);
     
