@@ -36,12 +36,14 @@ export default function AppPage() {
   // Si no hay usuario autenticado después de cargar, redirigir a login
   useEffect(() => {
     if (!isLoading && !user) {
-      console.log("No hay usuario autenticado, redirigiendo a login...");
-      window.location.href = "/login";
-    } else if (user) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log("No hay usuario autenticado, redirigiendo a login...");
+      }
+      router.push('/login');
+    } else if (user && process.env.NODE_ENV === 'development') {
       console.log("Usuario autenticado:", user.email);
     }
-  }, [isLoading, user]);
+  }, [isLoading, user, router]);
 
   // Mientras carga, mostrar spinner
   if (isLoading) {

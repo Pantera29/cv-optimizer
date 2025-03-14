@@ -66,14 +66,18 @@ const POLLING_INTERVAL = 5000; // Intervalo entre intentos de polling (5 segundo
 /**
  * Envía una solicitud a BrightData para extraer datos de una URL de LinkedIn
  */
-export async function requestJobData(url: string): Promise<BrightDataResponse> {
+export async function requestJobData(url: string, userId: string): Promise<BrightDataResponse> {
   try {
     // Validar URL
     if (!url.includes('linkedin.com') || !url.includes('/jobs/')) {
       throw new Error('La URL debe ser una oferta de trabajo válida de LinkedIn');
     }
     
-    console.log(`Iniciando solicitud para extraer datos de: ${url}`);
+    if (!userId) {
+      throw new Error('Se requiere un ID de usuario para extraer datos');
+    }
+    
+    console.log(`Iniciando solicitud para extraer datos de: ${url} para usuario: ${userId}`);
     const payload: BrightDataRequest[] = [{ url }];
     
     // Enviar solicitud inicial a BrightData
@@ -99,67 +103,76 @@ export async function requestJobData(url: string): Promise<BrightDataResponse> {
     // Iniciar proceso de polling para esperar los datos
     const jobData = await pollForSnapshotData(snapshotId);
     
-    // Procesar y guardar los datos recibidos
-    const results = await processAndSaveJobData(jobData);
+    // Procesar y guardar los datos obtenidos
+    const results = await processAndSaveJobData(jobData, userId);
     
-    // Type guard para verificar si es una respuesta con 'result'
-    function isResponseWithResult(obj: any): obj is { result: { data?: BrightDataItem } } {
-      return obj && typeof obj === 'object' && 'result' in obj && 
-             obj.result && typeof obj.result === 'object' && 'data' in obj.result;
-    }
-    
-    // Verificar si todos los resultados fallaron
-    const allFailed = results.every(result => result.success === false);
-    
-    if (allFailed) {
-      console.warn('Todos los intentos de guardar datos fallaron, intentando devolver datos crudos');
+    // Crear un objeto jobData de respaldo si results está vacío
+    if (!results || results.length === 0 || !results[0].success) {
+      console.log('No se encontraron resultados válidos. Creando datos de respaldo...');
       
-      // Extraer los datos normalizados aunque fallara el guardado
-      let rawJobData: BrightDataItem | undefined = undefined;
-      if (Array.isArray(jobData) && jobData.length > 0) {
-        rawJobData = mapFieldNames(jobData[0]);
-      } else if (isResponseWithResult(jobData)) {
-        if (jobData.result.data) {
-          rawJobData = mapFieldNames(jobData.result.data);
+      // Extraer información básica de la URL
+      const urlParts = url.split('/');
+      let jobId = '';
+      
+      // Intentar obtener el ID del trabajo de la URL
+      for (let i = 0; i < urlParts.length; i++) {
+        if (urlParts[i] === 'view' && i + 1 < urlParts.length) {
+          jobId = urlParts[i + 1];
+          break;
         }
-      } else if (typeof jobData === 'object' && jobData !== null) {
-        rawJobData = mapFieldNames(jobData as BrightDataItem);
       }
       
-      // Si encontramos datos, devolverlos
-      if (rawJobData) {
-        // Añadir los datos crudos a la respuesta para que el frontend pueda usarlos
-        return {
-          success: true,
-          message: 'Datos de la oferta de trabajo obtenidos pero con errores al guardar',
-          data: [{
-            success: true,
-            message: 'Datos disponibles (no guardados en base de datos)',
-            data: rawJobData
-          }],
-          rawData: rawJobData  // Incluir datos crudos como respaldo
-        };
-      }
+      // Crear datos básicos a partir de la URL
+      const fallbackData = {
+        job_posting_id: jobId || `linkedin-${Date.now()}`,
+        job_title: 'Oferta de trabajo de LinkedIn',
+        company_name: 'Empresa en LinkedIn',
+        job_location: 'No disponible',
+        job_description_formatted: 'No se pudieron extraer los detalles completos de esta oferta.',
+        apply_link: url
+      };
+      
+      // Devolver datos de respaldo
+      return {
+        success: true,
+        message: 'Se han creado datos básicos para la oferta',
+        data: results,
+        jobData: fallbackData
+      };
     }
     
     return {
       success: true,
-      message: 'Datos de la oferta de trabajo obtenidos y procesados exitosamente',
-      data: results
+      message: 'Datos procesados exitosamente',
+      data: results,
+      jobData: results.length > 0 && results[0].success ? results[0].data : undefined
     };
   } catch (error) {
     console.error('Error al solicitar datos de la oferta de trabajo:', error);
+    
+    // Crear datos de respaldo para el error
+    const fallbackData = {
+      job_posting_id: `linkedin-error-${Date.now()}`,
+      job_title: 'Error al extraer datos',
+      company_name: 'LinkedIn',
+      job_location: 'No disponible',
+      job_description_formatted: `No se pudieron extraer los detalles: ${error instanceof Error ? error.message : String(error)}`,
+      apply_link: url
+    };
+    
     if (axios.isAxiosError(error)) {
       return {
         success: false,
         message: `Error al solicitar datos: ${error.response?.data?.message || error.message}`,
-        error: error.message
+        error: error.message,
+        jobData: fallbackData
       };
     }
     return {
       success: false,
       message: 'Error al solicitar datos de la oferta de trabajo',
-      error: error instanceof Error ? error.message : String(error)
+      error: error instanceof Error ? error.message : String(error),
+      jobData: fallbackData
     };
   }
 }
@@ -226,6 +239,14 @@ function mapFieldNames(item: BrightDataItem): BrightDataItem {
   // Mapear campos con nombres diferentes
   if ('job_num_applicants' in item) {
     mappedData.applicant_count = item.job_num_applicants;
+    // Eliminar el campo original que causa el error
+    delete mappedData.job_num_applicants;
+  }
+
+  if ('job_posted_time' in item) {
+    mappedData.job_posted_time_ago = item.job_posted_time;
+    // Eliminar el campo original que causa el error
+    delete mappedData.job_posted_time;
   }
 
   if ('job_industries' in item) {
@@ -241,11 +262,26 @@ function mapFieldNames(item: BrightDataItem): BrightDataItem {
 
   if ('job_employment_type' in item) {
     mappedData.job_work_type = item.job_employment_type;
+    // Si ya mapeamos a otro campo, eliminar el original para evitar conflictos
+    delete mappedData.job_employment_type;
   }
 
-  if ('job_posted_time' in item) {
-    mappedData.job_posted_time_ago = item.job_posted_time;
-  }
+  // Convertir todos los nombres de campos a los existentes en la tabla
+  // y eliminar los que no existen en el esquema
+  const fieldMappings: Record<string, string> = {
+    // Mapeo de campos específicos que podrían causar problemas
+    'job_base_pay': 'job_base_pay_range',
+    'job_description': 'job_description_formatted',
+    'applicants': 'applicant_count',
+  };
+
+  // Aplicar los mapeos adicionales
+  Object.entries(fieldMappings).forEach(([oldField, newField]) => {
+    if (oldField in mappedData && !(newField in mappedData)) {
+      mappedData[newField] = mappedData[oldField];
+      delete mappedData[oldField];
+    }
+  });
 
   // Asegurarse de que los objetos complejos se mantengan
   if (item.discovery_input) mappedData.discovery_input = item.discovery_input;
@@ -258,7 +294,7 @@ function mapFieldNames(item: BrightDataItem): BrightDataItem {
 /**
  * Procesa y guarda los datos recibidos de BrightData
  */
-async function processAndSaveJobData(data: BrightDataResponse | BrightDataItem[]) {
+async function processAndSaveJobData(data: BrightDataResponse | BrightDataItem[], userId: string) {
   console.log('Procesando datos recibidos de BrightData');
   
   // Extraer los datos según la estructura recibida
@@ -341,10 +377,11 @@ async function processAndSaveJobData(data: BrightDataResponse | BrightDataItem[]
         job_title: jobData.job_title || 'Sin título',
         company_name: jobData.company_name || 'Empresa desconocida',
         job_location: jobData.job_location || 'Ubicación desconocida',
-        created_at: jobData.created_at || new Date().toISOString()
+        created_at: jobData.created_at || new Date().toISOString(),
+        user_id: userId
       };
       
-      const result = await saveJobToDatabase(enrichedJobData);
+      const result = await saveJobToDatabase(enrichedJobData, userId);
       results.push(result);
     } catch (error) {
       console.error(`Error al guardar oferta:`, error);
@@ -362,7 +399,7 @@ async function processAndSaveJobData(data: BrightDataResponse | BrightDataItem[]
 /**
  * Guarda o actualiza un trabajo en la base de datos
  */
-async function saveJobToDatabase(jobData: BrightDataItem) {
+async function saveJobToDatabase(jobData: BrightDataItem, userId: string) {
   try {
     // Validar ID del trabajo
     if (!jobData.job_posting_id) {
@@ -379,15 +416,19 @@ async function saveJobToDatabase(jobData: BrightDataItem) {
     // Limpiar y validar los datos antes de guardarlos
     const cleanedData = cleanJobDataForDB(jobData);
     
+    // Asegurar que el user_id esté incluido
+    cleanedData.user_id = userId;
+    
     // Registrar los campos que se van a insertar para diagnóstico
     console.log(`Campos a insertar: ${Object.keys(cleanedData).join(', ')}`);
     
-    // Verificar si el trabajo ya existe
+    // Verificar si el trabajo ya existe PARA ESTE USUARIO
     try {
       const { data: existingJob, error: fetchError } = await supabase
         .from('linkedin_jobs')
         .select('job_posting_id')
         .eq('job_posting_id', cleanedData.job_posting_id)
+        .eq('user_id', userId) // CORRECCIÓN: Filtrar por user_id
         .single();
 
       if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 es "no se encontró el registro" (no es un error real)
@@ -405,7 +446,8 @@ async function saveJobToDatabase(jobData: BrightDataItem) {
         const { error: updateError } = await supabase
           .from('linkedin_jobs')
           .update(cleanedData)
-          .eq('job_posting_id', cleanedData.job_posting_id);
+          .eq('job_posting_id', cleanedData.job_posting_id)
+          .eq('user_id', userId); // CORRECCIÓN: Filtrar por user_id
 
         if (updateError) {
           console.error('Error detallado al actualizar trabajo:', updateError);
@@ -493,7 +535,19 @@ function cleanJobDataForDB(jobData: BrightDataItem): Record<string, any> {
   const cleanedData: Record<string, any> = { ...jobData };
   
   // Eliminar campos problemáticos que no existen en el esquema
-  const fieldsToRemove = ['input', '__v', '_id', 'discovery_output'];
+  const fieldsToRemove = [
+    'input', 
+    '__v', 
+    '_id', 
+    'discovery_output', 
+    'job_num_applicants', 
+    'job_posted_time',    
+    'job_base_pay',       
+    'job_description',    
+    'applicants',         
+    'job_employment_type' 
+  ];
+  
   fieldsToRemove.forEach(field => {
     if (field in cleanedData) {
       delete cleanedData[field];
@@ -506,20 +560,57 @@ function cleanJobDataForDB(jobData: BrightDataItem): Record<string, any> {
   cleanedData.company_name = String(cleanedData.company_name || 'Empresa desconocida');
   cleanedData.job_location = String(cleanedData.job_location || 'Ubicación desconocida');
   
-  // Convertir campos de array a formato adecuado
-  if (cleanedData.job_industries && !Array.isArray(cleanedData.job_industries)) {
+  // Manejar específicamente el campo job_industries para asegurar que sea un array válido
+  if ('job_industries' in cleanedData) {
     try {
-      // Si es un string formateado como array, convertirlo
-      if (typeof cleanedData.job_industries === 'string' && 
-          (cleanedData.job_industries.startsWith('[') || cleanedData.job_industries.includes(','))) {
-        cleanedData.job_industries = cleanedData.job_industries.split(',').map((i: string) => i.trim());
-      } else {
-        // Si es un valor único, convertirlo a array
-        cleanedData.job_industries = [cleanedData.job_industries];
+      let industriesArray: string[] = [];
+      
+      // Si ya es un array, usarlo directamente
+      if (Array.isArray(cleanedData.job_industries)) {
+        industriesArray = cleanedData.job_industries.map(i => String(i).trim());
+      }
+      // Si es un string, convertirlo a array
+      else if (typeof cleanedData.job_industries === 'string') {
+        // Intentar detectar si es un string que ya parece un array JSON
+        if (cleanedData.job_industries.startsWith('[') && cleanedData.job_industries.endsWith(']')) {
+          try {
+            // Intentar parsearlo como JSON
+            const parsed = JSON.parse(cleanedData.job_industries);
+            if (Array.isArray(parsed)) {
+              industriesArray = parsed.map(i => String(i).trim());
+            } else {
+              industriesArray = [String(cleanedData.job_industries).trim()];
+            }
+          } catch {
+            // Si falla el parseo JSON, tratar como string normal
+            industriesArray = cleanedData.job_industries.split(',').map(i => i.trim());
+          }
+        } 
+        // Si es un string simple con comas
+        else if (cleanedData.job_industries.includes(',')) {
+          industriesArray = cleanedData.job_industries.split(',').map(i => i.trim());
+        }
+        // Si es un string simple
+        else {
+          industriesArray = [String(cleanedData.job_industries).trim()];
+        }
+      }
+      
+      // Limpiar el array: eliminar elementos vacíos y duplicados
+      industriesArray = industriesArray.filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
+      
+      // Asignar el array final
+      cleanedData.job_industries = industriesArray;
+      
+      // También crear un string para company_industry
+      if (industriesArray.length > 0) {
+        cleanedData.company_industry = industriesArray.join(', ');
       }
     } catch (e) {
       console.warn('Error al procesar job_industries:', e);
+      // Si hay algún error, usar un array vacío
       cleanedData.job_industries = [];
+      delete cleanedData.company_industry;
     }
   }
   
@@ -553,17 +644,59 @@ function cleanJobDataForDB(jobData: BrightDataItem): Record<string, any> {
     }
   });
 
-  // Convertir objetos complejos a JSON string para evitar errores con Supabase
+  // Verificar que solo se usen columnas que existen en la tabla
+  const columnasExistentes = [
+    'job_uuid', 'user_id', 'job_posting_id', 'job_title', 'company_name',
+    'job_location', 'job_work_type', 'job_base_pay_range', 'job_posted_time_ago',
+    'job_description_formatted', 'job_requirements', 'job_qualifications',
+    'company_industry', 'company_description', 'applicant_count', 'created_at',
+    'job_seniority_level', 'job_function', 'job_industries', 'company_url',
+    'company_logo', 'job_posted_date', 'apply_link', 'job_summary',
+    'country_code', 'title_id', 'company_id', 'application_availability',
+    'job_posted_date_timestamp', 'discovery_input', 'job_poster', 'base_salary'
+  ];
+
+  // Eliminar campos que no están en la lista de columnas permitidas
+  Object.keys(cleanedData).forEach(key => {
+    if (!columnasExistentes.includes(key)) {
+      console.warn(`Eliminando campo no existente en el esquema: ${key}`);
+      delete cleanedData[key];
+    }
+  });
+
+  // IMPORTANTE: NO convertir arrays a JSON strings
+  // Preservar arrays nativos para los campos que son de tipo array en PostgreSQL
+  const arrayFields = ['job_industries']; 
+  
+  // Convertir objetos complejos (excepto arrays) a JSON string para evitar errores
   Object.keys(cleanedData).forEach(key => {
     if (typeof cleanedData[key] === 'object' && cleanedData[key] !== null) {
-      try {
-        cleanedData[key] = JSON.stringify(cleanedData[key]);
-      } catch (e) {
-        console.warn(`Error al convertir objeto a JSON para ${key}:`, e);
-        delete cleanedData[key]; // Eliminar campos que no se pueden convertir
+      // No convertir a string si es un campo de tipo array
+      if (arrayFields.includes(key)) {
+        // Validar que realmente sea un array
+        if (!Array.isArray(cleanedData[key])) {
+          console.warn(`Campo ${key} debería ser un array pero no lo es. Forzando array vacío.`);
+          cleanedData[key] = [];
+        }
+      } else {
+        // Para otros objetos, convertir a JSON string
+        try {
+          cleanedData[key] = JSON.stringify(cleanedData[key]);
+        } catch (e) {
+          console.warn(`Error al convertir objeto a JSON para ${key}:`, e);
+          delete cleanedData[key]; // Eliminar campos que no se pueden convertir
+        }
       }
     }
   });
+
+  // Añadir logging adicional para diagnóstico
+  if ('job_industries' in cleanedData) {
+    console.log('job_industries antes de enviar:', 
+      Array.isArray(cleanedData.job_industries) 
+        ? `Array de ${cleanedData.job_industries.length} elementos` 
+        : typeof cleanedData.job_industries);
+  }
   
   return cleanedData;
 } 

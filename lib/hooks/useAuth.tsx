@@ -4,6 +4,7 @@ import { useState, useEffect, createContext, useContext, ReactNode } from 'react
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { User, Session } from '@supabase/supabase-js';
+import { toast } from 'sonner';
 
 type AuthContextType = {
   user: User | null;
@@ -21,6 +22,17 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+// Función auxiliar para logging condicional
+const logDebug = (message: string, data?: any) => {
+  if (process.env.NODE_ENV === 'development') {
+    if (data) {
+      console.log(message, data);
+    } else {
+      console.log(message);
+    }
+  }
+};
+
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -33,26 +45,26 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     const loadSession = async () => {
       try {
         setIsLoading(true);
-        console.log('Cargando sesión inicial...');
+        logDebug('Cargando sesión inicial...');
         
         const { data, error } = await supabase.auth.getSession();
         
         if (error) {
-          console.error('Error al cargar la sesión:', error.message);
+          logDebug('Error al cargar la sesión:', error.message);
           return;
         }
         
         if (data?.session) {
-          console.log('Sesión encontrada:', data.session.user.id);
+          logDebug('Sesión encontrada:', data.session.user.id);
           setSession(data.session);
           setUser(data.session.user);
         } else {
-          console.log('No se encontró sesión activa');
+          logDebug('No se encontró sesión activa');
           setSession(null);
           setUser(null);
         }
       } catch (err) {
-        console.error('Error inesperado al cargar la sesión:', err);
+        logDebug('Error inesperado al cargar la sesión:', err);
       } finally {
         setIsLoading(false);
       }
@@ -63,14 +75,14 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     // Suscripción a cambios de autenticación
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, currentSession) => {
-        console.log('Evento de autenticación:', event);
+        logDebug('Evento de autenticación:', event);
         
         if (currentSession) {
-          console.log('Nuevo usuario autenticado:', currentSession.user.id);
+          logDebug('Nuevo usuario autenticado:', currentSession.user.id);
           setSession(currentSession);
           setUser(currentSession.user);
         } else {
-          console.log('Usuario desautenticado');
+          logDebug('Usuario desautenticado');
           setSession(null);
           setUser(null);
         }
@@ -87,26 +99,30 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setIsLoading(true);
       setError(null);
       
-      console.log('Intentando iniciar sesión con:', email);
+      logDebug('Intentando iniciar sesión con:', email);
       
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
       
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
       
       if (data.session) {
-        console.log('Login exitoso, usuario:', data.session.user.id);
+        logDebug('Login exitoso, usuario:', data.session.user.id);
         setSession(data.session);
         setUser(data.session.user);
+        router.push('/app');
         return true;
       }
       
       return false;
     } catch (error: any) {
-      console.error('Error en login:', error.message);
-      setError(error.message);
+      logDebug('Error en login:', error.message);
+      setError(error.message || 'Error al iniciar sesión');
+      toast.error(error.message || 'Error al iniciar sesión');
       return false;
     } finally {
       setIsLoading(false);
@@ -123,16 +139,20 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         password,
       });
       
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
       
-      console.log('Registro exitoso. Verifica tu email:', data);
+      logDebug('Registro exitoso. Verifica tu email:', data);
+      toast.success('Cuenta creada. Por favor, verifica tu correo electrónico.');
       return { 
         user: data.user, 
         session: data.session 
       };
     } catch (error: any) {
-      console.error('Error en registro:', error.message);
-      setError(error.message);
+      logDebug('Error en registro:', error.message);
+      setError(error.message || 'Error al registrar usuario');
+      toast.error(error.message || 'Error al registrar usuario');
       throw error;
     } finally {
       setIsLoading(false);
@@ -145,17 +165,20 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setError(null);
       
       const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
       
-      console.log('Sesión cerrada correctamente');
+      logDebug('Sesión cerrada correctamente');
       setSession(null);
       setUser(null);
       
-      // Redirigir a la página de login después de cerrar sesión
-      window.location.href = '/login';
+      // Redirigir a la página de login usando router
+      router.push('/login');
     } catch (error: any) {
-      console.error('Error al cerrar sesión:', error.message);
-      setError(error.message);
+      logDebug('Error al cerrar sesión:', error.message);
+      setError(error.message || 'Error al cerrar sesión');
+      toast.error(error.message || 'Error al cerrar sesión');
     } finally {
       setIsLoading(false);
     }

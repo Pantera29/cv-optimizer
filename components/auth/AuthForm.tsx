@@ -8,40 +8,55 @@ import { Label } from "@/components/ui/label"
 import { Loader2, CheckCircle, AlertCircle, Mail, Lock } from 'lucide-react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { toast } from 'sonner'
 
 export function AuthForm() {
   const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loginSuccess, setLoginSuccess] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
   const { signIn, signUp, isLoading, error } = useAuth()
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
+    setFormError(null)
 
     try {
       if (isLogin) {
-        console.log("Iniciando login con:", email)
+        if (process.env.NODE_ENV === 'development') {
+          console.log("Iniciando login con:", email)
+        }
+        
         const success = await signIn(email, password)
         
         if (success) {
-          console.log("Login exitoso, redirigiendo...")
+          if (process.env.NODE_ENV === 'development') {
+            console.log("Login exitoso, redirigiendo...")
+          }
           setLoginSuccess(true)
-          
-          // Redirigir directamente a la aplicación
-          window.location.href = '/app'
+          toast.success('¡Inicio de sesión exitoso!')
+          // No es necesario redirigir aquí, useAuth se encarga de la redirección
         }
       } else {
-        console.log("Iniciando registro con:", email)
+        if (process.env.NODE_ENV === 'development') {
+          console.log("Iniciando registro con:", email)
+        }
+        
         await signUp(email, password)
+        toast.success('Cuenta creada. Por favor, verifica tu correo electrónico.')
         // No redirigimos en el registro, esperamos confirmación de email
         setEmail('')
         setPassword('')
         setIsLogin(true)
       }
-    } catch (error) {
-      console.error("Error en autenticación:", error)
+    } catch (error: any) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error("Error en autenticación:", error)
+      }
       setLoginSuccess(false)
+      setFormError(error.message || "Error en la autenticación")
+      toast.error(error.message || "Error en la autenticación")
     }
   }
 
@@ -59,10 +74,10 @@ export function AuthForm() {
       </CardHeader>
       
       <CardContent className="px-6 pb-4">
-        {error && (
+        {(error || formError) && (
           <Alert variant="destructive" className="mb-4">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>{error || formError}</AlertDescription>
           </Alert>
         )}
         

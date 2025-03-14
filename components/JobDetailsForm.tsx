@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Link, Send, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/hooks/useAuth";
+import Cookies from "js-cookie";
 
 export interface JobDetails {
   title: string;
@@ -21,6 +23,7 @@ export default function JobDetailsForm({ onSubmit, isLoading }: {
   onSubmit: (details: JobDetails) => void;
   isLoading?: boolean;
 }) {
+  const { user, session } = useAuth(); // Obtener la sesión para el token
   const [linkedinUrl, setLinkedinUrl] = useState("");
   const [isExtractingData, setIsExtractingData] = useState(false);
   const [extractionError, setExtractionError] = useState<string | null>(null);
@@ -39,6 +42,23 @@ export default function JobDetailsForm({ onSubmit, isLoading }: {
     setExtractionError(null); // Limpiar error al cambiar la URL
   };
 
+  // Función auxiliar para obtener el token de autenticación
+  const getAuthToken = () => {
+    // Primero intentar obtener el token de la sesión
+    if (session?.access_token) {
+      return session.access_token;
+    }
+    
+    // Como respaldo, intentar obtener la cookie
+    const cookieToken = Cookies.get('auth_token');
+    if (cookieToken) {
+      return cookieToken;
+    }
+
+    // Si no se encuentra el token, retornar null
+    return null;
+  };
+
   const extractJobData = async () => {
     if (!linkedinUrl) {
       toast.error("Por favor, ingresa una URL de LinkedIn");
@@ -50,19 +70,48 @@ export default function JobDetailsForm({ onSubmit, isLoading }: {
       return;
     }
 
+    if (!user) {
+      toast.error("Debes iniciar sesión para extraer datos de trabajos");
+      setExtractionError("No estás autenticado. Por favor, inicia sesión para continuar.");
+      return;
+    }
+
+    // Obtener el token de autenticación
+    const token = getAuthToken();
+    
+    if (!token) {
+      console.error("No se pudo obtener el token de autenticación");
+      toast.error("Error de autenticación. Por favor, vuelve a iniciar sesión.");
+      setExtractionError("No se pudo obtener el token de autorización. Por favor, vuelve a iniciar sesión.");
+      return;
+    }
+
     // Limpiar error anterior
     setExtractionError(null);
+    
+    // Actualizar de inmediato el estado con al menos la URL
+    setJobDetails(prev => ({
+      ...prev, 
+      linkedinUrl,
+      // Datos mínimos para mostrar mientras se carga
+      title: prev.title || "Cargando...",
+      company: prev.company || "Obteniendo datos...",
+    }));
     
     try {
       setIsExtractingData(true);
       toast.info("Extrayendo datos de LinkedIn, este proceso puede tomar hasta 2 minutos...");
       
+      console.log("Enviando solicitud a /api/jobs con token");
+      
       const response = await fetch("/api/jobs", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}` // Añadir el token de autorización
         },
         body: JSON.stringify({ url: linkedinUrl }),
+        credentials: 'include', // Incluir cookies en la solicitud
       });
 
       const data = await response.json();
@@ -76,7 +125,7 @@ export default function JobDetailsForm({ onSubmit, isLoading }: {
         throw new Error(data.message || "Error al procesar la solicitud");
       }
 
-      // Comprobar si hay datos en la respuesta
+      // Verificar si hay datos en la respuesta
       if (!data.data || data.data.length === 0) {
         throw new Error("No se encontraron datos para la oferta de trabajo");
       }
@@ -91,71 +140,65 @@ export default function JobDetailsForm({ onSubmit, isLoading }: {
       // Determinar dónde están los datos de trabajo en la respuesta
       let jobData: any = null;
       
-      // Primero revisar si hay datos crudos disponibles (respaldo)
-      if (data.rawData) {
-        console.log("Usando datos crudos como respaldo:", data.rawData);
-        jobData = data.rawData;
-      }
-      // Si no hay datos crudos, buscar en la estructura normal
-      else {
-        // Navegar por la estructura de datos para encontrar la información relevante
-        if (data.data[0] && data.data[0].data) {
+      console.log("Estructura completa de data:", JSON.stringify(data, null, 2));
+      
+      try {
+        // Acceso directo a la estructura anidada que vemos en la respuesta
+        if (data.data && data.data[0] && data.data[0].data) {
+          // Estructura: data.data[0].data - esta es la estructura que vemos en la captura
           jobData = data.data[0].data;
-        } else if (data.data[0] && data.data[0].success !== false) {
+          console.log("Acceso directo a data.data[0].data:", jobData);
+        } 
+        // Intentos alternativos si la estructura es diferente
+        else if (data.data && data.data[0]) {
           jobData = data.data[0];
-        } else {
+        } else if (data.jobData) {
+          jobData = data.jobData;
+        } else if (data.data) {
           jobData = data.data;
         }
-      }
-
-      if (!jobData || (typeof jobData === 'object' && Object.keys(jobData).length === 0)) {
-        throw new Error("No se pudieron obtener datos suficientes de la oferta de trabajo");
-      }
-
-      console.log("Datos obtenidos de LinkedIn:", jobData);
-
-      // Extraer habilidades de requisitos si está disponible
-      let skills = "";
-      if (jobData.job_requirements && typeof jobData.job_requirements === 'object') {
-        // Intentar extraer requisitos como habilidades
-        if (Array.isArray(jobData.job_requirements)) {
-          skills = jobData.job_requirements.join(", ");
-        } else if (jobData.job_requirements.skills) {
-          skills = Array.isArray(jobData.job_requirements.skills) 
-            ? jobData.job_requirements.skills.join(", ") 
-            : jobData.job_requirements.skills;
-        }
-      }
-
-      // Preparar la descripción/responsabilidades
-      let responsibilities = jobData.job_description_formatted || jobData.job_summary || "";
-      
-      // Actualizar el estado con los datos obtenidos
-      const updatedJobDetails = {
-        title: jobData.job_title || "",
-        company: jobData.company_name || "",
-        linkedinUrl: linkedinUrl,
-        requiredSkills: skills || (Array.isArray(jobData.job_skills) ? jobData.job_skills.join(", ") : ""),
-        experienceLevel: jobData.job_seniority_level || "",
-        responsibilities: responsibilities,
-        industry: jobData.company_industry || (Array.isArray(jobData.job_industries) ? jobData.job_industries.join(", ") : ""),
-      };
-      
-      setJobDetails(updatedJobDetails);
-      
-      if (!hasErrors) {
-        toast.success("Datos de la oferta de trabajo extraídos correctamente");
-      } else {
-        toast.warning("Datos extraídos parcialmente");
-      }
-      
-      // Proporcionar feedback sobre qué campos se extrajeron
-      const filledFields = Object.entries(updatedJobDetails)
-        .filter(([key, value]) => value && key !== 'linkedinUrl')
-        .map(([key]) => key);
         
-      if (filledFields.length > 0) {
-        console.log(`Campos extraídos: ${filledFields.join(', ')}`);
+        // Validación básica: asegurarnos de tener al menos el título
+        if (jobData && !jobData.job_title && jobData.data && jobData.data.job_title) {
+          jobData = jobData.data;
+        }
+        
+        // Si aún no tenemos datos, buscar recursivamente
+        if (!jobData || !jobData.job_title) {
+          console.log("Buscando datos en cualquier nivel de la respuesta");
+          jobData = buscarDatosRecursivamente(data);
+        }
+        
+        console.log("Datos finales encontrados:", jobData);
+        
+        // Actualizar el estado con datos mínimos garantizados
+        const updatedJobDetails = {
+          title: jobData?.job_title || "No disponible",
+          company: jobData?.company_name || "No disponible",
+          linkedinUrl: linkedinUrl,
+          requiredSkills: "",
+          experienceLevel: jobData?.job_seniority_level || "",
+          responsibilities: jobData?.job_description_formatted || "",
+          industry: jobData?.company_industry || "",
+        };
+        
+        console.log("Actualizando jobDetails con:", updatedJobDetails);
+        setJobDetails(updatedJobDetails);
+        
+        toast.success("Información extraída correctamente");
+      } catch (processingError) {
+        console.error("Error al procesar datos:", processingError);
+        // Mantener datos básicos en caso de error de procesamiento
+        setJobDetails({
+          title: "No disponible (Error de procesamiento)",
+          company: "No disponible",
+          linkedinUrl: linkedinUrl,
+          requiredSkills: "",
+          experienceLevel: "",
+          responsibilities: "",
+          industry: "",
+        });
+        setExtractionError("Error al procesar los datos recibidos. Intenta de nuevo.");
       }
     } catch (error) {
       console.error("Error al extraer datos:", error);
@@ -190,6 +233,36 @@ export default function JobDetailsForm({ onSubmit, isLoading }: {
         onSubmit(jobDetails);
       }
     }
+  };
+
+  // Función para buscar datos de trabajo recursivamente en un objeto
+  const buscarDatosRecursivamente = (obj: any, depth = 0): any => {
+    // Limitar la profundidad de búsqueda para evitar bucles infinitos
+    if (depth > 5) return null;
+    
+    // Caso base: si es null o no es un objeto
+    if (!obj || typeof obj !== 'object') return null;
+    
+    // Verificar si este objeto tiene propiedades de trabajo
+    if (obj.job_title || obj.company_name) {
+      return obj;
+    }
+    
+    // Si es un array, buscar en cada elemento
+    if (Array.isArray(obj)) {
+      for (const item of obj) {
+        const result = buscarDatosRecursivamente(item, depth + 1);
+        if (result) return result;
+      }
+    } else {
+      // Si es un objeto, buscar en cada propiedad
+      for (const key in obj) {
+        const result = buscarDatosRecursivamente(obj[key], depth + 1);
+        if (result) return result;
+      }
+    }
+    
+    return null;
   };
 
   return (
@@ -246,20 +319,70 @@ export default function JobDetailsForm({ onSubmit, isLoading }: {
         </div>
       )}
 
-      {jobDetails.title && (
-        <div className="bg-muted p-4 rounded-md">
-          <h3 className="font-medium mb-2">Datos extraídos:</h3>
-          <ul className="space-y-1 text-sm">
-            <li><strong>Título:</strong> {jobDetails.title}</li>
-            <li><strong>Empresa:</strong> {jobDetails.company}</li>
-            {jobDetails.industry && <li><strong>Industria:</strong> {jobDetails.industry}</li>}
-            {jobDetails.experienceLevel && <li><strong>Nivel:</strong> {jobDetails.experienceLevel}</li>}
-            {jobDetails.responsibilities && (
-              <li><strong>Descripción:</strong> {jobDetails.responsibilities.length > 100 
-                ? `${jobDetails.responsibilities.substring(0, 100)}...` 
-                : jobDetails.responsibilities}</li>
-            )}
-          </ul>
+      {/* Estado de carga */}
+      {isExtractingData && (
+        <div className="bg-blue-50 border border-blue-200 p-4 rounded-md">
+          <div className="flex items-start">
+            <div className="bg-blue-100 p-2 rounded-full mr-3">
+              <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
+            </div>
+            <div>
+              <h4 className="font-medium text-blue-800 text-sm flex items-center">
+                Extrayendo datos de LinkedIn
+              </h4>
+              <p className="text-blue-700 text-sm mt-1">
+                Esto puede tomar hasta 2 minutos...
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Resumen simplificado - Solo muestra lo esencial */}
+      {linkedinUrl && !isExtractingData && !extractionError && (
+        <div className="bg-green-50 border border-green-200 p-4 rounded-md">
+          <div className="flex items-start">
+            <div className="bg-green-100 p-2 rounded-full mr-3">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-600">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </div>
+            <div>
+              <h4 className="font-medium text-green-800 text-sm flex items-center">
+                Resumen de la oferta de trabajo
+              </h4>
+              
+              {jobDetails.title ? (
+                <div className="mt-2">
+                  <p className="text-green-900 font-medium">{jobDetails.title}</p>
+                  {jobDetails.company && (
+                    <p className="text-green-700 text-sm">{jobDetails.company}</p>
+                  )}
+                  <a 
+                    href={linkedinUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 flex items-center text-xs mt-2"
+                  >
+                    <Link className="h-3 w-3 mr-1" />
+                    Ver oferta completa en LinkedIn
+                  </a>
+                </div>
+              ) : (
+                <p className="text-green-700 text-sm mt-1">
+                  URL de LinkedIn registrada correctamente
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!linkedinUrl && !isExtractingData && !extractionError && (
+        <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
+          <p className="text-sm text-muted-foreground text-center">
+            Ingresa una URL de LinkedIn y haz clic en "Extraer datos" para cargar información de la oferta de trabajo
+          </p>
         </div>
       )}
 

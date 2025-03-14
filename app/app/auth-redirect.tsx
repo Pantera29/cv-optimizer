@@ -1,39 +1,39 @@
 "use client"
 
 import { useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/hooks/useAuth'
+import { useRouter } from 'next/navigation'
+import { Loader2 } from 'lucide-react'
 
 export function AuthRedirect() {
+  const { user, isLoading } = useAuth()
+  const router = useRouter()
+
   useEffect(() => {
-    const checkAuth = async () => {
-      // Verificar si hay una sesión activa
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        
-        if (session) {
-          console.log('Sesión encontrada, redirigiendo a la aplicación')
-          // Redirigir a la aplicación
-          window.location.href = '/app'
-        } else {
-          console.log('No hay sesión activa, redirigiendo a login')
-          // Redirigir a login
-          window.location.href = '/login'
+    // Solo redirigir después de que useAuth haya terminado de cargar
+    if (!isLoading) {
+      if (user) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Usuario autenticado, redirigiendo a la aplicación')
         }
-      } catch (error) {
-        console.error('Error al verificar sesión:', error)
-        window.location.href = '/login'
+        // Usar router en lugar de window.location
+        router.push('/app')
+      } else {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('No hay usuario autenticado, redirigiendo a login')
+        }
+        // Usar router en lugar de window.location
+        router.push('/login')
       }
     }
-    
-    checkAuth()
-  }, [])
+  }, [user, isLoading, router])
   
   return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="text-center">
-        <div className="w-16 h-16 border-t-4 border-blue-500 border-solid rounded-full animate-spin mx-auto mb-4"></div>
+        <Loader2 className="w-16 h-16 text-blue-500 animate-spin mx-auto mb-4" />
         <h2 className="text-2xl font-semibold mb-2">Redirigiendo...</h2>
-        <p className="text-gray-500">Por favor espera mientras te redirigimos a la aplicación</p>
+        <p className="text-gray-500">Por favor espera mientras te redirigimos</p>
       </div>
     </div>
   )
